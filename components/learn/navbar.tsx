@@ -19,6 +19,10 @@ const navLinks = [
   { label: "Community", href: "/community" },
 ];
 
+const authedLinks = [
+  { label: "My Learning", href: "/dashboard" },
+];
+
 export default function LearnNavbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
