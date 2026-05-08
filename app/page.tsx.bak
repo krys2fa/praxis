@@ -1,0 +1,8 @@
+import { redirect } from "next/navigation";
+
+// The root URL is the Praxis Learn marketing home.
+// The actual page lives at app/(learn)/page.tsx with its layout.
+// We redirect so the (learn) layout wraps it correctly.
+export default function RootPage() {
+  redirect("/");
+}

@@ -1,0 +1,688 @@
+// =============================================================================
+// PRAXIS — PRISMA SCHEMA
+// Single schema serving both Praxis Learn and Praxis Legal
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserRole {
+  // Learn roles
+  STUDENT
+  INSTRUCTOR
+  // Legal roles
+  SENIOR_PARTNER
+  ASSOCIATE
+  PARALEGAL
+  LEGAL_ADMIN
+  LEGAL_CLIENT
+  // Platform
+  SUPER_ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  PAUSED
+  TRIALING
+}
+
+enum CourseStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+  QUIZ
+  ASSIGNMENT
+  LIVE
+}
+
+enum CaseStatus {
+  INTAKE
+  ACTIVE
+  DISCOVERY
+  HEARING
+  PENDING_JUDGMENT
+  CLOSED
+  ARCHIVED
+}
+
+enum CasePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CaseType {
+  CIVIL
+  CRIMINAL
+  FAMILY
+  CORPORATE
+  PROPERTY
+  EMPLOYMENT
+  IMMIGRATION
+  INTELLECTUAL_PROPERTY
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum BillingModel {
+  HOURLY
+  FIXED_FEE
+  RETAINER
+  CONTINGENCY
+}
+
+enum DocumentStatus {
+  DRAFT
+  FINAL
+  SIGNED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  STRIPE
+  MTN_MOMO
+  VODAFONE_CASH
+}
+
+// =============================================================================
+// SHARED / AUTH
+// =============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  clerkId       String    @unique
+  email         String    @unique
+  name          String
+  avatarUrl     String?
+  phone         String?
+  role          UserRole  @default(STUDENT)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Learn relations
+  enrollments       Enrollment[]
+  courseProgress    CourseProgress[]
+  lessonProgress    LessonProgress[]
+  quizAttempts      QuizAttempt[]
+  certificates      Certificate[]
+  reviews           Review[]
+  discussionPosts   DiscussionPost[]
+  taughtCourses     Course[]          @relation("InstructorCourses")
+
+  // Legal relations
+  assignedCases     CaseAssignment[]
+  timeEntries       TimeEntry[]
+  legalDocuments    Document[]
+  tasks             Task[]            @relation("AssignedTasks")
+  createdTasks      Task[]            @relation("CreatedTasks")
+  caseNotes         CaseNote[]
+  clientProfile     LegalClient?
+
+  // Billing
+  payments          Payment[]
+  subscriptions     Subscription[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// LEARN — COURSES & CONTENT
+// =============================================================================
+
+model Course {
+  id              String       @id @default(cuid())
+  title           String
+  slug            String       @unique
+  description     String
+  shortDescription String?
+  thumbnailUrl    String?
+  previewVideoId  String?      // Bunny.net video ID (free preview)
+  price           Decimal?     @db.Decimal(10, 2)
+  currency        String       @default("GHS")
+  tier            SubscriptionTier @default(FREE)
+  status          CourseStatus @default(DRAFT)
+  isFeatured      Boolean      @default(false)
+  totalDuration   Int          @default(0) // in seconds
+  totalLessons    Int          @default(0)
+  level           String       @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED
+  category        String?
+  tags            String[]
+  instructorId    String
+  instructor      User         @relation("InstructorCourses", fields: [instructorId], references: [id])
+  modules         Module[]
+  enrollments     Enrollment[]
+  progress        CourseProgress[]
+  reviews         Review[]
+  discussions     DiscussionPost[]
+  announcements   Announcement[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("courses")
+}
+
+model Module {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  order       Int
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("modules")
+}
+
+model Lesson {
+  id              String       @id @default(cuid())
+  title           String
+  description     String?
+  type            LessonType   @default(VIDEO)
+  order           Int
+  isPreview       Boolean      @default(false)
+  durationSeconds Int?
+  // Video (Bunny.net)
+  bunnyVideoId    String?
+  bunnyLibraryId  String?
+  // Text content
+  content         String?      @db.Text
+  // Resources
+  attachments     Json?        // [{name, url, size}]
+  moduleId        String
+  module          Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  progress        LessonProgress[]
+  quiz            Quiz?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("lessons")
+}
+
+model Enrollment {
+  id              String             @id @default(cuid())
+  userId          String
+  courseId        String
+  user            User               @relation(fields: [userId], references: [id])
+  course          Course             @relation(fields: [courseId], references: [id])
+  status          String             @default("ACTIVE") // ACTIVE, COMPLETED, REFUNDED
+  completedAt     DateTime?
+  expiresAt       DateTime?
+  paymentId       String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+model Subscription {
+  id                String             @id @default(cuid())
+  userId            String
+  user              User               @relation(fields: [userId], references: [id])
+  tier              SubscriptionTier
+  status            SubscriptionStatus @default(ACTIVE)
+  provider          PaymentProvider    @default(PAYSTACK)
+  providerSubId     String?            // Paystack subscription code
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean          @default(false)
+  trialEndsAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+model CourseProgress {
+  id                String   @id @default(cuid())
+  userId            String
+  courseId          String
+  user              User     @relation(fields: [userId], references: [id])
+  course            Course   @relation(fields: [courseId], references: [id])
+  percentComplete   Float    @default(0)
+  lastAccessedAt    DateTime @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@map("course_progress")
+}
+
+model LessonProgress {
+  id              String   @id @default(cuid())
+  userId          String
+  lessonId        String
+  user            User     @relation(fields: [userId], references: [id])
+  lesson          Lesson   @relation(fields: [lessonId], references: [id])
+  isCompleted     Boolean  @default(false)
+  watchedSeconds  Int      @default(0)
+  lastPosition    Int      @default(0) // resume position in seconds
+  notes           String?  @db.Text
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+  @@map("lesson_progress")
+}
+
+model Quiz {
+  id          String        @id @default(cuid())
+  title       String
+  lessonId    String        @unique
+  lesson      Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions   QuizQuestion[]
+  attempts    QuizAttempt[]
+  passingScore Int          @default(70)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String   @id @default(cuid())
+  quizId        String
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  question      String
+  type          String   @default("MULTIPLE_CHOICE")
+  options       Json?    // [{label, value, isCorrect}]
+  correctAnswer String?
+  explanation   String?
+  order         Int
+  createdAt     DateTime @default(now())
+
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  userId      String
+  quizId      String
+  user        User     @relation(fields: [userId], references: [id])
+  quiz        Quiz     @relation(fields: [quizId], references: [id])
+  score       Float
+  answers     Json     // [{questionId, answer, isCorrect}]
+  passed      Boolean
+  completedAt DateTime @default(now())
+
+  @@map("quiz_attempts")
+}
+
+model Certificate {
+  id          String   @id @default(cuid())
+  userId      String
+  courseId    String
+  user        User     @relation(fields: [userId], references: [id])
+  shareUrl    String   @unique
+  issuedAt    DateTime @default(now())
+
+  @@unique([userId, courseId])
+  @@map("certificates")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  user      User     @relation(fields: [userId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id])
+  rating    Int      // 1-5
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@map("reviews")
+}
+
+model DiscussionPost {
+  id        String           @id @default(cuid())
+  courseId  String
+  lessonId  String?
+  userId    String
+  course    Course           @relation(fields: [courseId], references: [id])
+  user      User             @relation(fields: [userId], references: [id])
+  content   String           @db.Text
+  parentId  String?
+  parent    DiscussionPost?  @relation("Replies", fields: [parentId], references: [id])
+  replies   DiscussionPost[] @relation("Replies")
+  upvotes   Int              @default(0)
+  isAnswer  Boolean          @default(false)
+  isPinned  Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("discussion_posts")
+}
+
+model Announcement {
+  id          String   @id @default(cuid())
+  courseId    String?
+  course      Course?  @relation(fields: [courseId], references: [id])
+  title       String
+  content     String   @db.Text
+  sentVia     String[] // ["email", "telegram", "push"]
+  createdAt   DateTime @default(now())
+
+  @@map("announcements")
+}
+
+// =============================================================================
+// LEGAL — CASES & CLIENTS
+// =============================================================================
+
+model LegalClient {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  type            String    @default("INDIVIDUAL") // INDIVIDUAL, CORPORATE
+  companyName     String?
+  taxId           String?
+  address         String?
+  city            String?
+  country         String    @default("Ghana")
+  notes           String?   @db.Text
+  cases           Case[]
+  invoices        Invoice[]
+  documents       Document[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("legal_clients")
+}
+
+model Case {
+  id                String          @id @default(cuid())
+  caseNumber        String          @unique
+  title             String
+  description       String?         @db.Text
+  type              CaseType
+  status            CaseStatus      @default(INTAKE)
+  priority          CasePriority    @default(MEDIUM)
+  tags              String[]
+  clientId          String
+  client            LegalClient     @relation(fields: [clientId], references: [id])
+  assignments       CaseAssignment[]
+  notes             CaseNote[]
+  documents         Document[]
+  tasks             Task[]
+  timeEntries       TimeEntry[]
+  invoices          Invoice[]
+  events            CalendarEvent[]
+  courtDates        CourtDate[]
+  relatedCases      CaseRelation[]  @relation("PrimaryCase")
+  relatedToCases    CaseRelation[]  @relation("RelatedCase")
+  courtName         String?
+  judgeAssigned     String?
+  opposingParty     String?
+  opposingCounsel   String?
+  filingDate        DateTime?
+  closedAt          DateTime?
+  statuteDeadline   DateTime?
+  billingModel      BillingModel    @default(HOURLY)
+  hourlyRate        Decimal?        @db.Decimal(10, 2)
+  fixedFee          Decimal?        @db.Decimal(10, 2)
+  retainerAmount    Decimal?        @db.Decimal(10, 2)
+  currency          String          @default("GHS")
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@map("cases")
+}
+
+model CaseAssignment {
+  id        String   @id @default(cuid())
+  caseId    String
+  userId    String
+  role      String   @default("ASSIGNED") // LEAD, ASSIGNED, REVIEWER
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+  assignedAt DateTime @default(now())
+
+  @@unique([caseId, userId])
+  @@map("case_assignments")
+}
+
+model CaseRelation {
+  id            String @id @default(cuid())
+  primaryCaseId String
+  relatedCaseId String
+  relation      String // e.g. "RELATED", "APPEAL_OF", "CONSOLIDATED"
+  primaryCase   Case   @relation("PrimaryCase", fields: [primaryCaseId], references: [id])
+  relatedCase   Case   @relation("RelatedCase", fields: [relatedCaseId], references: [id])
+
+  @@unique([primaryCaseId, relatedCaseId])
+  @@map("case_relations")
+}
+
+model CaseNote {
+  id          String   @id @default(cuid())
+  caseId      String
+  userId      String
+  case        Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+  content     String   @db.Text
+  isPrivate   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("case_notes")
+}
+
+model Document {
+  id              String         @id @default(cuid())
+  title           String
+  description     String?
+  fileUrl         String
+  fileKey         String         // Cloudflare R2 key
+  fileSize        Int
+  mimeType        String
+  version         Int            @default(1)
+  status          DocumentStatus @default(DRAFT)
+  category        String?
+  tags            String[]
+  caseId          String?
+  clientId        String?
+  uploadedById    String
+  case            Case?          @relation(fields: [caseId], references: [id])
+  client          LegalClient?   @relation(fields: [clientId], references: [id])
+  uploadedBy      User           @relation(fields: [uploadedById], references: [id])
+  shareToken      String?        @unique
+  shareExpiresAt  DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("documents")
+}
+
+model TimeEntry {
+  id          String   @id @default(cuid())
+  caseId      String
+  userId      String
+  case        Case     @relation(fields: [caseId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+  description String
+  minutes     Int
+  isBillable  Boolean  @default(true)
+  hourlyRate  Decimal? @db.Decimal(10, 2)
+  date        DateTime
+  invoiceId   String?
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("time_entries")
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  clientId      String
+  caseId        String?
+  client        LegalClient   @relation(fields: [clientId], references: [id])
+  case          Case?         @relation(fields: [caseId], references: [id])
+  status        InvoiceStatus @default(DRAFT)
+  lineItems     Json          // [{description, quantity, unitPrice, total}]
+  subtotal      Decimal       @db.Decimal(10, 2)
+  taxPercent    Decimal       @default(0) @db.Decimal(5, 2)
+  taxAmount     Decimal       @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+  currency      String        @default("GHS")
+  dueDate       DateTime
+  notes         String?
+  paidAt        DateTime?
+  timeEntries   TimeEntry[]
+  payments      Payment[]
+  sentAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("invoices")
+}
+
+model Task {
+  id           String     @id @default(cuid())
+  title        String
+  description  String?
+  status       TaskStatus @default(TODO)
+  priority     CasePriority @default(MEDIUM)
+  dueDate      DateTime?
+  caseId       String?
+  case         Case?      @relation(fields: [caseId], references: [id])
+  assignedToId String?
+  createdById  String
+  assignedTo   User?      @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  createdBy    User       @relation("CreatedTasks", fields: [createdById], references: [id])
+  parentId     String?
+  parent       Task?      @relation("SubTasks", fields: [parentId], references: [id])
+  subtasks     Task[]     @relation("SubTasks")
+  completedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("tasks")
+}
+
+model CalendarEvent {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  startAt     DateTime
+  endAt       DateTime
+  allDay      Boolean   @default(false)
+  location    String?
+  caseId      String?
+  case        Case?     @relation(fields: [caseId], references: [id])
+  type        String    @default("GENERAL") // COURT_DATE, DEADLINE, MEETING, HEARING
+  reminders   Json?     // [{minutes: 60, via: "sms"}, ...]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("calendar_events")
+}
+
+model CourtDate {
+  id          String   @id @default(cuid())
+  caseId      String
+  case        Case     @relation(fields: [caseId], references: [id])
+  date        DateTime
+  purpose     String   // HEARING, MENTION, JUDGMENT, FILING
+  court       String
+  courtRoom   String?
+  notes       String?
+  outcome     String?
+  nextDate    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("court_dates")
+}
+
+// =============================================================================
+// SHARED — PAYMENTS & AUDIT
+// =============================================================================
+
+model Payment {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  invoiceId       String?
+  invoice         Invoice?        @relation(fields: [invoiceId], references: [id])
+  amount          Decimal         @db.Decimal(10, 2)
+  currency        String          @default("GHS")
+  status          PaymentStatus   @default(PENDING)
+  provider        PaymentProvider @default(PAYSTACK)
+  providerRef     String?         // Paystack reference / Stripe charge ID
+  providerMetadata Json?
+  description     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@map("payments")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String
+  entity      String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@map("audit_logs")
+}
