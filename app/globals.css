@@ -178,6 +178,111 @@
 }
 
 /* ==========================================================================
+   OKLCH FALLBACKS — for browsers that don't support oklch() (Chrome < 111,
+   older Android WebView, Safari < 15.4, Firefox < 113).
+   e.g. Gionee P61 and other budget Android tablets.
+   ========================================================================== */
+
+@supports not (color: oklch(0 0 0)) {
+  :root {
+    --background: #fafaf8;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
+    --primary: #f59e0b;
+    --primary-foreground: #0f172a;
+    --secondary: #f1f5f9;
+    --secondary-foreground: #1e293b;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --accent: #fef3c7;
+    --accent-foreground: #1e293b;
+    --destructive: #ef4444;
+    --border: #e2e8f0;
+    --input: #e2e8f0;
+    --ring: #f59e0b;
+    --chart-1: #f59e0b;
+    --chart-2: #22c55e;
+    --chart-3: #8b5cf6;
+    --chart-4: #f97316;
+    --chart-5: #06b6d4;
+    --sidebar: #0f172a;
+    --sidebar-foreground: #f5f5f4;
+    --sidebar-primary: #f59e0b;
+    --sidebar-primary-foreground: #0f172a;
+    --sidebar-accent: #1e293b;
+    --sidebar-accent-foreground: #f5f5f4;
+    --sidebar-border: #334155;
+    --sidebar-ring: #f59e0b;
+  }
+
+  [data-theme="legal"] {
+    --background: #f9fafb;
+    --foreground: #0f2d18;
+    --card: #ffffff;
+    --card-foreground: #0f2d18;
+    --popover: #ffffff;
+    --popover-foreground: #0f2d18;
+    --primary: #166534;
+    --primary-foreground: #f9fafb;
+    --secondary: #f0fdf4;
+    --secondary-foreground: #14532d;
+    --muted: #f0fdf4;
+    --muted-foreground: #4b6358;
+    --accent: #fefce8;
+    --accent-foreground: #14532d;
+    --destructive: #ef4444;
+    --border: #d1fae5;
+    --input: #d1fae5;
+    --ring: #166534;
+    --chart-1: #166534;
+    --chart-2: #ca8a04;
+    --chart-3: #f97316;
+    --chart-4: #0e7490;
+    --chart-5: #7c3aed;
+    --sidebar: #0a2318;
+    --sidebar-foreground: #f0fdf4;
+    --sidebar-primary: #ca8a04;
+    --sidebar-primary-foreground: #0a2318;
+    --sidebar-accent: #0f2d1a;
+    --sidebar-accent-foreground: #f0fdf4;
+    --sidebar-border: #14532d;
+    --sidebar-ring: #ca8a04;
+  }
+
+  .dark {
+    --background: #0f172a;
+    --foreground: #f5f5f4;
+    --card: #1e293b;
+    --card-foreground: #f5f5f4;
+    --popover: #1e293b;
+    --popover-foreground: #f5f5f4;
+    --primary: #f59e0b;
+    --primary-foreground: #0f172a;
+    --secondary: #334155;
+    --secondary-foreground: #f5f5f4;
+    --muted: #334155;
+    --muted-foreground: #94a3b8;
+    --accent: #44403c;
+    --accent-foreground: #f5f5f4;
+    --destructive: #f87171;
+    --border: rgba(255,255,255,0.10);
+    --input: rgba(255,255,255,0.12);
+    --ring: #f59e0b;
+    --sidebar: #080d1a;
+    --sidebar-foreground: #e7e5e4;
+    --sidebar-primary: #f59e0b;
+    --sidebar-primary-foreground: #0f172a;
+    --sidebar-accent: #1e293b;
+    --sidebar-accent-foreground: #e7e5e4;
+    --sidebar-border: rgba(255,255,255,0.08);
+    --sidebar-ring: #f59e0b;
+  }
+}
+
+/* ==========================================================================
    BASE STYLES
    ========================================================================== */
 
@@ -222,10 +327,14 @@
 @layer utilities {
   /* Glass morphism */
   .glass {
-    background: oklch(from var(--card) l c h / 0.7);
+    /* fallback for browsers without color-mix/oklch support */
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(226, 232, 240, 0.5);
+    /* modern browsers */
+    background: color-mix(in srgb, var(--card) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
     backdrop-filter: blur(12px) saturate(1.4);
     -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    border: 1px solid oklch(from var(--border) l c h / 0.5);
   }
 
   /* Gradient text */
@@ -244,11 +353,14 @@
 
   /* Shimmer animation for skeletons */
   .shimmer {
+    /* fallback for browsers without color-mix/oklch support */
+    background: linear-gradient(90deg, transparent 0%, #e2e8f0 50%, transparent 100%);
+    /* modern browsers */
     background: linear-gradient(
       90deg,
-      oklch(from var(--muted) l c h / 0) 0%,
-      oklch(from var(--muted) l c h / 0.8) 50%,
-      oklch(from var(--muted) l c h / 0) 100%
+      color-mix(in srgb, var(--muted) 0%, transparent) 0%,
+      color-mix(in srgb, var(--muted) 80%, transparent) 50%,
+      color-mix(in srgb, var(--muted) 0%, transparent) 100%
     );
     background-size: 200% 100%;
     animation: shimmer 1.6s ease-in-out infinite;
@@ -260,7 +372,8 @@
   }
   .hover-lift:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px -4px oklch(from var(--foreground) l c h / 0.12);
+    /* fallback */ box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 8px 24px -4px color-mix(in srgb, var(--foreground) 12%, transparent);
   }
 
   /* Video container — preserves aspect ratio */
